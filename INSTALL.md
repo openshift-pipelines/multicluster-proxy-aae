@@ -28,38 +28,20 @@ git clone https://github.com/khrm/proxy-aae.git
 cd proxy-aae
 ```
 
-### 2. Install dependencies
+### 2. SET UP KO_DOCKER_REPO
 
 ```bash
-make deps
+export KO_DOCKER_REPO="kind.local"
 ```
 
 ### 3. Deploy to Kubernetes
 
 ```bash
-# Deploy with ko (recommended)
-make deploy
-
-# Or use the single file deployment
-make deploy-ko-single
+ko apply -R -f config/
 ```
 
-### 4. Configure worker clusters
 
-```bash
-# Apply example worker configuration
-kubectl apply -f config/example-worker-config.yaml
-
-# Or create your own worker cluster secrets
-kubectl create secret generic worker-cluster1 \
-  --from-file=kubeconfig=/path/to/worker-kubeconfig \
-  --namespace=proxy-aae \
-  --dry-run=client -o yaml | \
-  kubectl label --local -f - proxy.tekton.dev/worker-config=true proxy.tekton.dev/cluster-name=cluster1 | \
-  kubectl apply -f -
-```
-
-### 5. Test the deployment
+### 4. Test the deployment
 
 ```bash
 # Port forward to access the service
@@ -72,52 +54,6 @@ curl http://localhost:8080/health
 curl http://localhost:8080/ready
 ```
 
-## Development
-
-### Local development
-
-```bash
-# Run locally
-make run
-
-# Build and test
-make build
-make test
-```
-
-### Building with ko
-
-```bash
-# Build locally with ko
-make ko-build
-
-# Build and push to registry
-ko build --push .
-```
-
-## Troubleshooting
-
-### Check deployment status
-
-```bash
-kubectl get pods -n proxy-aae
-kubectl logs -n proxy-aae deployment/proxy-aae
-```
-
-### Check service status
-
-```bash
-kubectl get svc -n proxy-aae
-kubectl describe svc proxy-aae -n proxy-aae
-```
-
-### Check RBAC
-
-```bash
-kubectl get clusterrole proxy-aae
-kubectl get clusterrolebinding proxy-aae
-kubectl get serviceaccount proxy-aae -n proxy-aae
-```
 
 ## Configuration
 
@@ -125,40 +61,7 @@ kubectl get serviceaccount proxy-aae -n proxy-aae
 
 The following environment variables can be configured:
 
-- `WORKERS_SECRET_NAMESPACE`: Namespace for worker kubeconfig secrets (default: `proxy-aae`)
 - `REQUEST_TIMEOUT`: Timeout for worker cluster requests (default: `30s`)
 - `DEFAULT_LOG_TAIL_LINES`: Default number of log lines to tail (default: `100`)
 - `LOG_LEVEL`: Logging level (default: `2`)
 
-### Worker Cluster Configuration
-
-Worker clusters are configured via Kubernetes Secrets with the following labels:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: worker-<clusterName>
-  namespace: proxy-aae
-  labels:
-    proxy.tekton.dev/worker-config: "true"
-    proxy.tekton.dev/cluster-name: "<clusterName>"
-type: Opaque
-stringData:
-  kubeconfig: |
-    <worker kubeconfig YAML>
-```
-
-## Cleanup
-
-### Remove the deployment
-
-```bash
-make undeploy
-```
-
-### Or remove manually
-
-```bash
-kubectl delete -f config/ko-deploy.yaml
-```
