@@ -15,10 +15,10 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/gorilla/websocket"
-	"github.com/khrm/proxy-aae/internal/authz"
-	"github.com/khrm/proxy-aae/internal/config"
-	"github.com/khrm/proxy-aae/internal/registry"
-	"github.com/khrm/proxy-aae/internal/resolver"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/authz"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/config"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/registry"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/resolver"
 	tektonclient "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 )
 

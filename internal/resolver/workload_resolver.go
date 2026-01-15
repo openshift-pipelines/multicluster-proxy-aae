@@ -7,7 +7,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/khrm/proxy-aae/internal/config"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/config"
 	kueuev1beta1 "sigs.k8s.io/kueue/apis/kueue/v1beta1"
 	kueueclient "sigs.k8s.io/kueue/client-go/clientset/versioned"
 )

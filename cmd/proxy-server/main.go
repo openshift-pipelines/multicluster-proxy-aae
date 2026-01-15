@@ -12,11 +12,11 @@ import (
 	"k8s.io/klog/v2"
 	kueueclient "sigs.k8s.io/kueue/client-go/clientset/versioned"
 
-	"github.com/khrm/proxy-aae/internal/authz"
-	"github.com/khrm/proxy-aae/internal/config"
-	"github.com/khrm/proxy-aae/internal/handlers"
-	"github.com/khrm/proxy-aae/internal/registry"
-	"github.com/khrm/proxy-aae/internal/resolver"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/authz"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/config"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/handlers"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/registry"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/resolver"
 )
 
 func main() {
