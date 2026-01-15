@@ -1,4 +1,4 @@
-module github.com/khrm/proxy-aae
+module github.com/openshift-pipelines/multicluster-proxy-aae
 
 go 1.25.0
 

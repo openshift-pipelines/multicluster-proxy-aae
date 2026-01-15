@@ -24,7 +24,7 @@ ko version
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/khrm/proxy-aae.git
+git clone https://github.com/openshift-pipelines/multicluster-proxy-aae.git
 cd proxy-aae
 ```
 

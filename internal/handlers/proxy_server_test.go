@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/khrm/proxy-aae/internal/config"
+	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/config"
 )
 
 func TestProxyServer_Health(t *testing.T) {

@@ -3,7 +3,7 @@
 # Variables
 BINARY_NAME=proxy-aae
 NAMESPACE=proxy-aae
-KO_IMAGE=ko://github.com/khrm/proxy-aae
+KO_IMAGE=ko://github.com/openshift-pipelines/multicluster-proxy-aae
 
 # Go parameters
 GOCMD=go
