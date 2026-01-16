@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ COPY go.mod go.sum ./
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o proxy-aae ./cmd/proxy-server/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o proxy-aae ./cmd/proxy-server/main.go
 
 # Final stage
 FROM alpine:latest
