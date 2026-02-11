@@ -71,6 +71,8 @@ metadata:
   namespace: proxy-aae
   labels:
     app: proxy-aae
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: proxy-server-tls
 spec:
   selector:
     app: proxy-aae
