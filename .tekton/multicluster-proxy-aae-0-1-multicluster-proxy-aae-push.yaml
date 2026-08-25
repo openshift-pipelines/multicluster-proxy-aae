@@ -39,6 +39,8 @@ spec:
   - name: prefetch-input
     value: |
       {"type": "rpm", "path": ".konflux/rpms"}
+  - name: repo-name
+    value: "multicluster-proxy-aae"
   pipelineRef:
     name: docker-build-ta
   taskRunTemplate:
