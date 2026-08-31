@@ -26,6 +26,8 @@ type authorizer interface {
 	CheckPipelineRunAccess(ctx context.Context, r *http.Request, namespace, name string) error
 	CheckPodAccess(ctx context.Context, r *http.Request, namespace, name string) error
 	CheckPodLogsAccess(ctx context.Context, r *http.Request, namespace, name string) error
+	CheckTaskRunListAccess(ctx context.Context, r *http.Request, namespace string) error
+	CheckPodListAccess(ctx context.Context, r *http.Request, namespace string) error
 }
 
 type workloadResolver interface {
@@ -159,6 +161,12 @@ func (p *ProxyServer) handleResolve(w http.ResponseWriter, r *http.Request, name
 
 // handleTaskRuns handles /taskruns endpoint
 func (p *ProxyServer) handleTaskRuns(w http.ResponseWriter, r *http.Request, namespace, pipelineRunName string) {
+	// Check authorization
+	if err := p.authzHandler.CheckTaskRunListAccess(r.Context(), r, namespace); err != nil {
+		http.Error(w, fmt.Sprintf("Access denied: %v", err), http.StatusForbidden)
+		return
+	}
+
 	workerConfig, workerClusterName, err := p.getWorkerConfig(w, r, namespace, pipelineRunName)
 	if err != nil {
 		klog.Error(err.Error())
@@ -191,6 +199,12 @@ func (p *ProxyServer) handleTaskRuns(w http.ResponseWriter, r *http.Request, nam
 
 // handlePipelineRunPods handles /pods endpoint for PipelineRun
 func (p *ProxyServer) handlePipelineRunPods(w http.ResponseWriter, r *http.Request, namespace, pipelineRunName string) {
+	// Check authorization
+	if err := p.authzHandler.CheckPodListAccess(r.Context(), r, namespace); err != nil {
+		http.Error(w, fmt.Sprintf("Access denied: %v", err), http.StatusForbidden)
+		return
+	}
+
 	workerConfig, workerClusterName, err := p.getWorkerConfig(w, r, namespace, pipelineRunName)
 	if err != nil {
 		klog.Error(err.Error())
@@ -209,6 +223,11 @@ func (p *ProxyServer) handlePipelineRunPods(w http.ResponseWriter, r *http.Reque
 		klog.Errorf("Failed to list Pods from worker cluster: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to list Pods: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	// Strip sensitive fields from pod spec but keep container names for console logs
+	for i := range pods.Items {
+		pods.Items[i].Spec = getReqPodSpec(pods.Items[i].Spec)
 	}
 
 	// Set response headers
@@ -502,4 +521,26 @@ func (p *ProxyServer) getWorkerConfig(w http.ResponseWriter, r *http.Request, na
 		return nil, "", fmt.Errorf("worker config not found: %v", err)
 	}
 	return workerConfig, workerCluster.Name, nil
+}
+
+func getReqPodSpec(spec corev1.PodSpec) corev1.PodSpec {
+	return corev1.PodSpec{
+		InitContainers: getContainers(spec.InitContainers),
+		Containers:     getContainers(spec.Containers),
+	}
+}
+
+func getContainers(containers []corev1.Container) []corev1.Container {
+	reqContainer := make([]corev1.Container, len(containers))
+	for i, c := range containers {
+		reqContainer[i] = corev1.Container{
+			Name:            c.Name,
+			Image:           c.Image,
+			SecurityContext: c.SecurityContext,
+			Command:         c.Command,
+			Args:            c.Args,
+			Resources:       c.Resources,
+		}
+	}
+	return reqContainer
 }
