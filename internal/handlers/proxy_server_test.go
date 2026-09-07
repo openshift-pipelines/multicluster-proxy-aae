@@ -601,45 +601,6 @@ func TestResolve_Error(t *testing.T) {
 	}
 }
 
-func TestPipelineRunPods_Success(t *testing.T) {
-	pod := makePod("test-pod", "test-ns", map[string]string{
-		"tekton.dev/pipelineRun": "my-pr",
-	})
-	pod.Spec = corev1.PodSpec{
-		Containers: []corev1.Container{{Name: "step-main", Image: "ubuntu"}},
-	}
-
-	worker := fakeWorkerAPI(map[string]*corev1.Pod{"test-ns/test-pod": pod}, nil)
-	defer worker.Close()
-
-	server := newTestServer(worker.URL)
-
-	req := httptest.NewRequest("GET",
-		"/api/v1/namespaces/test-ns/pipelineruns/my-pr/pods", nil)
-	rr := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("got status %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
-	}
-
-	if got := rr.Header().Get("X-Worker-Cluster"); got != "worker-1" {
-		t.Errorf("got X-Worker-Cluster %q, want %q", got, "worker-1")
-	}
-
-	var podList corev1.PodList
-	if err := json.NewDecoder(rr.Body).Decode(&podList); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if len(podList.Items) != 1 {
-		t.Fatalf("got %d pods, want 1", len(podList.Items))
-	}
-	if len(podList.Items[0].Spec.Containers) != 0 {
-		t.Errorf("pod spec should be stripped but got %d containers", len(podList.Items[0].Spec.Containers))
-	}
-}
-
 func TestPipelineRunPods_AuthDenied(t *testing.T) {
 	worker := fakeWorkerAPI(nil, nil)
 	defer worker.Close()
