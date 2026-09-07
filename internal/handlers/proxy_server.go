@@ -225,11 +225,6 @@ func (p *ProxyServer) handlePipelineRunPods(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Strip sensitive fields from pod spec but keep container names for console logs
-	for i := range pods.Items {
-		pods.Items[i].Spec = getReqPodSpec(pods.Items[i].Spec)
-	}
-
 	// Set response headers
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Worker-Cluster", workerClusterName)
@@ -521,26 +516,4 @@ func (p *ProxyServer) getWorkerConfig(w http.ResponseWriter, r *http.Request, na
 		return nil, "", fmt.Errorf("worker config not found: %v", err)
 	}
 	return workerConfig, workerCluster.Name, nil
-}
-
-func getReqPodSpec(spec corev1.PodSpec) corev1.PodSpec {
-	return corev1.PodSpec{
-		InitContainers: getContainers(spec.InitContainers),
-		Containers:     getContainers(spec.Containers),
-	}
-}
-
-func getContainers(containers []corev1.Container) []corev1.Container {
-	reqContainer := make([]corev1.Container, len(containers))
-	for i, c := range containers {
-		reqContainer[i] = corev1.Container{
-			Name:            c.Name,
-			Image:           c.Image,
-			SecurityContext: c.SecurityContext,
-			Command:         c.Command,
-			Args:            c.Args,
-			Resources:       c.Resources,
-		}
-	}
-	return reqContainer
 }
