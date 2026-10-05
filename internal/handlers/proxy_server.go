@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/config"
 	"github.com/openshift-pipelines/multicluster-proxy-aae/internal/resolver"
+	tektonclient "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 )
 
 type authorizer interface {
@@ -172,7 +173,7 @@ func (p *ProxyServer) handleTaskRuns(w http.ResponseWriter, r *http.Request, nam
 		return
 	}
 
-        // Create Tekton client for worker cluster
+	// Create Tekton client for worker cluster
 	tektonClient := tektonclient.NewForConfigOrDie(workerConfig)
 
 	// List TaskRuns with label selector
