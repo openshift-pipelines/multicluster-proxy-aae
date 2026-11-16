@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -20,32 +22,38 @@ import (
 const (
 	// MultiKueueClusterAnnotation is the annotation used to link secrets to MultiKueueCluster
 	MultiKueueClusterAnnotation = "kueue.x-k8s.io/multikueue-cluster"
+
+	// defaultWatchRetryInterval is how long the registry waits before it lists
+	// and watches MultiKueueClusters again, after a failure or after the watch ended
+	defaultWatchRetryInterval = 10 * time.Second
 )
 
 // WorkerConfigRegistry manages worker cluster configurations and cached clients
 type WorkerConfigRegistry struct {
-	kubeClient    kubernetes.Interface
-	kueueClient   kueueclient.Interface
-	config        *config.Config
-	configs       map[string]*rest.Config
-	kubeClients   map[string]kubernetes.Interface
-	tektonClients map[string]tektonclient.Interface
-	mu            sync.RWMutex
+	kubeClient         kubernetes.Interface
+	kueueClient        kueueclient.Interface
+	config             *config.Config
+	configs            map[string]*rest.Config
+	kubeClients        map[string]kubernetes.Interface
+	tektonClients      map[string]tektonclient.Interface
+	watchRetryInterval time.Duration
+	mu                 sync.RWMutex
 }
 
 // NewWorkerConfigRegistry creates a new WorkerConfigRegistry
 func NewWorkerConfigRegistry(kubeClient kubernetes.Interface, kueueClient kueueclient.Interface, config *config.Config) *WorkerConfigRegistry {
 	registry := &WorkerConfigRegistry{
-		kubeClient:    kubeClient,
-		kueueClient:   kueueClient,
-		config:        config,
-		configs:       make(map[string]*rest.Config),
-		kubeClients:   make(map[string]kubernetes.Interface),
-		tektonClients: make(map[string]tektonclient.Interface),
+		kubeClient:         kubeClient,
+		kueueClient:        kueueClient,
+		config:             config,
+		configs:            make(map[string]*rest.Config),
+		kubeClients:        make(map[string]kubernetes.Interface),
+		tektonClients:      make(map[string]tektonclient.Interface),
+		watchRetryInterval: defaultWatchRetryInterval,
 	}
 
 	// Start watching for MultiKueueCluster changes
-	go registry.watchMultiKueueClusters()
+	go registry.watchMultiKueueClusters(context.Background())
 
 	return registry
 }
@@ -138,8 +146,10 @@ func (r *WorkerConfigRegistry) LoadConfigs(ctx context.Context) error {
 	r.tektonClients = make(map[string]tektonclient.Interface)
 
 	// Load each MultiKueueCluster
+	listed := make(map[string]bool, len(clusters.Items))
 	for _, cluster := range clusters.Items {
 		clusterName := cluster.Name
+		listed[clusterName] = true
 
 		// Get the secret name from the cluster spec
 		if cluster.Spec.KubeConfig.LocationType != "Secret" {
@@ -181,42 +191,68 @@ func (r *WorkerConfigRegistry) LoadConfigs(ctx context.Context) error {
 		klog.Infof("Loaded worker config for cluster: %s (secret: %s)", clusterName, secretName)
 	}
 
+	// Forget clusters that no longer exist. Their delete event is missed when
+	// they are removed while the registry is not watching.
+	for clusterName := range r.configs {
+		if !listed[clusterName] {
+			delete(r.configs, clusterName)
+			klog.Infof("Removed worker config for cluster: %s", clusterName)
+		}
+	}
+
 	return nil
 }
 
-// watchMultiKueueClusters watches for changes to MultiKueueCluster resources
-func (r *WorkerConfigRegistry) watchMultiKueueClusters() {
-	ctx := context.Background()
+// watchMultiKueueClusters keeps the registry in sync with MultiKueueCluster
+// resources until ctx is done. It never gives up: Kueue may be installed after
+// the proxy has started, and the API server ends every watch after a while.
+func (r *WorkerConfigRegistry) watchMultiKueueClusters(ctx context.Context) {
+	wait.UntilWithContext(ctx, func(ctx context.Context) {
+		if err := r.syncAndWatch(ctx); err != nil {
+			klog.Errorf("Failed to sync MultiKueueClusters, retrying in %s: %v", r.watchRetryInterval, err)
+		}
+	}, r.watchRetryInterval)
+}
 
-	// Initial load
+// syncAndWatch loads the worker configs and then follows MultiKueueCluster
+// changes. It returns when the watch ends.
+func (r *WorkerConfigRegistry) syncAndWatch(ctx context.Context) error {
 	if err := r.LoadConfigs(ctx); err != nil {
-		klog.Errorf("Failed to load initial worker configs: %v", err)
+		return err
 	}
 
 	// Watch for changes to MultiKueueCluster resources
 	watcher, err := r.kueueClient.KueueV1beta1().MultiKueueClusters().Watch(ctx, v1.ListOptions{})
 	if err != nil {
-		klog.Errorf("Failed to watch MultiKueueClusters: %v", err)
-		return
+		return fmt.Errorf("failed to watch MultiKueueClusters: %v", err)
 	}
 	defer watcher.Stop()
 
-	for event := range watcher.ResultChan() {
-		switch event.Type {
-		case "ADDED", "MODIFIED":
-			// Reload all configs when MultiKueueClusters change
-			if err := r.LoadConfigs(ctx); err != nil {
-				klog.Errorf("Failed to reload worker configs: %v", err)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				// The API server ended the watch. The caller starts a new one.
+				return nil
 			}
-		case "DELETED":
-			// Remove config and cached clients for deleted MultiKueueCluster
-			if cluster, ok := event.Object.(*kueuev1beta1.MultiKueueCluster); ok {
-				r.mu.Lock()
-				delete(r.configs, cluster.Name)
-				delete(r.kubeClients, cluster.Name)
-				delete(r.tektonClients, cluster.Name)
-				r.mu.Unlock()
-				klog.Infof("Removed worker config for cluster: %s", cluster.Name)
+			switch event.Type {
+			case "ADDED", "MODIFIED":
+				// Reload all configs when MultiKueueClusters change
+				if err := r.LoadConfigs(ctx); err != nil {
+					klog.Errorf("Failed to reload worker configs: %v", err)
+				}
+			case "DELETED":
+				// Remove config and cached clients for deleted MultiKueueCluster
+				if cluster, ok := event.Object.(*kueuev1beta1.MultiKueueCluster); ok {
+					r.mu.Lock()
+					delete(r.configs, cluster.Name)
+					delete(r.kubeClients, cluster.Name)
+					delete(r.tektonClients, cluster.Name)
+					r.mu.Unlock()
+					klog.Infof("Removed worker config for cluster: %s", cluster.Name)
+				}
 			}
 		}
 	}
